@@ -1,0 +1,42 @@
+#report-content {
+  width: 794px; /* A4 width in pixels (210mm) */
+  max-width: 794px;
+  background: #fff;
+  padding: 15px;
+  margin: 0 auto;
+  font-size: 12px;
+}
+
+#report-content .MuiTable-root {
+  font-size: 11px !important;
+}
+
+#report-content .MuiTableCell-root {
+  padding: 4px 6px !important;
+  font-size: 11px !important;
+}
+
+#report-content .MuiChip-root {
+  font-size: 10px !important;
+  height: 22px !important;
+  min-width: 45px !important;
+}
+
+#report-content .MuiTypography-h5 {
+  font-size: 18px !important;
+}
+
+#report-content .MuiTypography-h6 {
+  font-size: 14px !important;
+}
+
+@media print {
+  #report-content {
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 10px !important;
+  }
+}
+
+
