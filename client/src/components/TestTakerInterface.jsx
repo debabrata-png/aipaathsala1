@@ -112,8 +112,8 @@ const TestTakerInterface = ({ test, onBack }) => {
     const secs = seconds % 60;
     return hours > 0
       ? `${hours}:${minutes.toString().padStart(2, "0")}:${secs
-          .toString()
-          .padStart(2, "0")}`
+        .toString()
+        .padStart(2, "0")}`
       : `${minutes}:${secs.toString().padStart(2, "0")}`;
   };
 
@@ -354,7 +354,7 @@ const TestTakerInterface = ({ test, onBack }) => {
 
   const startTest = async () => {
     try {
-      const response = await ep3.post("/starttestds1", {
+      const response = await ep3.post("/starttestds2", {
         testid: test._id,
         studentid: global1.userEmail,
         colid: global1.colid,
@@ -366,6 +366,34 @@ const TestTakerInterface = ({ test, onBack }) => {
 
       if (response.data.success) {
         setTestSubmission(response.data.data);
+        if (response.data.isResume) {
+          addWarning('Resumed previous session. Timer adjusted.');
+
+          // Restore timer
+          if (response.data.data.timeremaining) {
+            setTimeRemaining(response.data.data.timeremaining);
+          }
+
+          // Restore answers
+          if (response.data.data.answers && response.data.data.answers.length > 0) {
+            const restoredAnswers = {};
+            response.data.data.answers.forEach(ans => {
+              // questionnumber is 1-indexed in backend
+              const idx = ans.questionnumber - 1;
+              restoredAnswers[idx] = {
+                selectedanswerkey: ans.selectedanswerkey,
+                selectedanswer: ans.selectedanswer
+              };
+            });
+            setAnswers(restoredAnswers);
+          }
+
+          // Restore last question position
+          if (response.data.data.lastQuestionAttempted) {
+            setCurrentQuestion(response.data.data.lastQuestionAttempted - 1);
+            updateSectionTabForQuestion(response.data.data.lastQuestionAttempted - 1);
+          }
+        }
       }
     } catch (error) {
       alert("Failed to start test. Please try again.");
@@ -374,11 +402,14 @@ const TestTakerInterface = ({ test, onBack }) => {
   };
 
   const handleAnswerChange = (questionIndex, selectedKey) => {
+    const question = shuffledQuestions[questionIndex];
+    if (!question) return;
+
     setAnswers((prev) => ({
       ...prev,
       [questionIndex]: {
-        selectedanswerkey: selectedKey, // 'b'
-        selectedanswer: question["option" + selectedKey], // "Joule"
+        selectedanswerkey: selectedKey,
+        selectedanswer: question["option" + selectedKey],
       },
     }));
   };
@@ -388,7 +419,7 @@ const TestTakerInterface = ({ test, onBack }) => {
 
     try {
       const question = shuffledQuestions[questionIndex];
-      await ep3.post("/submitanswerds1", {
+      await ep3.post("/submitanswerds2", {
         testid: test._id,
         studentid: global1.userEmail,
         colid: global1.colid,
@@ -397,6 +428,7 @@ const TestTakerInterface = ({ test, onBack }) => {
         selectedanswer: answers[questionIndex]?.selectedanswer,
         section: question?.section || null,
         timespent: Math.floor((new Date() - startTimeRef.current) / 1000),
+        timeremaining: timeRemaining // Send current timer state
       });
     } catch (error) {
       console.error("Failed to submit answer:", error);
@@ -461,7 +493,7 @@ const TestTakerInterface = ({ test, onBack }) => {
         await submitAnswer(currentQuestion, answers[currentQuestion]);
       }
 
-      const response = await ep3.post("/submittestds1", {
+      const response = await ep3.post("/submittestds2", {
         testid: test._id,
         studentid: global1.userEmail,
         colid: global1.colid,
@@ -625,9 +657,8 @@ const TestTakerInterface = ({ test, onBack }) => {
           <Stack direction="row" spacing={2} alignItems="center">
             {test.proctoring && tabSwitches > 0 && (
               <Chip
-                label={`⚠️ ${tabSwitches} Tab Switch${
-                  tabSwitches > 1 ? "es" : ""
-                }`}
+                label={`⚠️ ${tabSwitches} Tab Switch${tabSwitches > 1 ? "es" : ""
+                  }`}
                 color="warning"
                 size="small"
               />
@@ -780,6 +811,20 @@ const TestTakerInterface = ({ test, onBack }) => {
                     backgroundColor: "grey.50",
                   }}
                 >
+                  {question.questionimage && (
+                    <Box sx={{ mb: 2, textAlign: "center" }}>
+                      <img
+                        src={question.questionimage}
+                        alt="Question Reference"
+                        style={{
+                          maxWidth: "100%",
+                          maxHeight: 300,
+                          objectFit: "contain",
+                          borderRadius: 4,
+                        }}
+                      />
+                    </Box>
+                  )}
                   <Typography
                     variant="body1"
                     sx={{
@@ -988,21 +1033,21 @@ const TestTakerInterface = ({ test, onBack }) => {
                             borderColor: isActive
                               ? "primary.main"
                               : isAnswered
-                              ? "success.main"
-                              : "grey.300",
+                                ? "success.main"
+                                : "grey.300",
                             bgcolor: isActive
                               ? "primary.main"
                               : isAnswered
-                              ? "success.main"
-                              : "background.paper",
+                                ? "success.main"
+                                : "background.paper",
                             color:
                               isActive || isAnswered ? "white" : "text.primary",
                             "&:hover": {
                               bgcolor: isActive
                                 ? "primary.dark"
                                 : isAnswered
-                                ? "success.dark"
-                                : "action.hover",
+                                  ? "success.dark"
+                                  : "action.hover",
                             },
                           }}
                         >
@@ -1047,21 +1092,21 @@ const TestTakerInterface = ({ test, onBack }) => {
                             borderColor: isActive
                               ? "primary.main"
                               : isAnswered
-                              ? "success.main"
-                              : "grey.300",
+                                ? "success.main"
+                                : "grey.300",
                             bgcolor: isActive
                               ? "primary.main"
                               : isAnswered
-                              ? "success.main"
-                              : "background.paper",
+                                ? "success.main"
+                                : "background.paper",
                             color:
                               isActive || isAnswered ? "white" : "text.primary",
                             "&:hover": {
                               bgcolor: isActive
                                 ? "primary.dark"
                                 : isAnswered
-                                ? "success.dark"
-                                : "action.hover",
+                                  ? "success.dark"
+                                  : "action.hover",
                             },
                           }}
                         >
@@ -1097,7 +1142,7 @@ const TestTakerInterface = ({ test, onBack }) => {
               </Box>
             </Paper>
           </Box>
-                  
+
         </Box>
 
         {/* Submit Dialog */}

@@ -23,6 +23,8 @@ const QuestionPreview = ({
   questions,
   onConfirm,
   onEdit,
+  onDelete,
+  onRegenerate,
   sectionBased = false,
 }) => {
   const [expandedQuestion, setExpandedQuestion] = useState(0);
@@ -33,29 +35,28 @@ const QuestionPreview = ({
   // Group questions by section
   const groupedQuestions = sectionBased
     ? questions.reduce((acc, q) => {
-        if (!acc[q.section]) acc[q.section] = [];
-        acc[q.section].push(q);
-        return acc;
-      }, {})
+      const secName = q.section || "Uncategorized";
+      if (!acc[secName]) acc[secName] = [];
+      acc[secName].push(q);
+      return acc;
+    }, {})
     : { "All Questions": questions };
 
-  // ✅ FIXED: Handle edit dialog open
+  // ✅ Hanlde edit dialog open
   const handleEditClick = (question) => {
     setEditingQuestion(question);
     setEditFormData({ ...question });
     setEditDialogOpen(true);
   };
 
-  // ✅ FIXED: Handle edit save
-  const handleEditSave = () => {
-    if (onEdit) {
-      onEdit(editFormData);
+  // ✅ Handle delete click
+  const handleDeleteClick = (question) => {
+    if (onDelete && window.confirm("Are you sure you want to delete this question?")) {
+      onDelete(question);
     }
-    setEditDialogOpen(false);
-    setEditingQuestion(null);
   };
 
-  // ✅ FIXED: Handle edit form change
+  // ✅ Handle edit form change
   const handleEditChange = (field, value) => {
     setEditFormData((prev) => ({
       ...prev,
@@ -97,7 +98,7 @@ const QuestionPreview = ({
             </Box>
           )}
 
-          {sectionQuestions.map((question, idx) => (
+          {sectionQuestions.map((question) => (
             <Accordion
               key={question.questionnumber}
               expanded={expandedQuestion === question.questionnumber}
@@ -136,17 +137,25 @@ const QuestionPreview = ({
                     Q{question.questionnumber}
                   </Typography>
                   <Box sx={{ flex: 1, minWidth: 0 }}>
-                    <Typography
-                      variant="body2"
-                      sx={{
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                        fontWeight: 500,
-                      }}
-                    >
-                      {question.question}
-                    </Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      {question.isgenerated && (
+                        <Chip label="AI" size="small" color="primary" variant="outlined" sx={{ height: 20, fontSize: '0.6rem' }} />
+                      )}
+                      {!question.isgenerated && question.isgenerated !== undefined && (
+                        <Chip label="Manual" size="small" color="secondary" variant="outlined" sx={{ height: 20, fontSize: '0.6rem' }} />
+                      )}
+                      <Typography
+                        variant="body2"
+                        sx={{
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                          fontWeight: 500,
+                        }}
+                      >
+                        {question.question}
+                      </Typography>
+                    </Box>
                   </Box>
                   <Chip
                     label={question.difficulty}
@@ -155,8 +164,8 @@ const QuestionPreview = ({
                       question.difficulty === "easy"
                         ? "success"
                         : question.difficulty === "medium"
-                        ? "warning"
-                        : "error"
+                          ? "warning"
+                          : "error"
                     }
                     variant="outlined"
                   />
@@ -193,8 +202,7 @@ const QuestionPreview = ({
                     >
                       📌 Question:
                     </Typography>
-                    <Typography
-                      variant="body1"
+                    <Box
                       sx={{
                         lineHeight: 1.8,
                         whiteSpace: "pre-wrap",
@@ -202,7 +210,7 @@ const QuestionPreview = ({
                       }}
                     >
                       <MathRenderer block>{question.question}</MathRenderer>
-                    </Typography>
+                    </Box>
                   </Box>
 
                   {/* Options */}
@@ -227,7 +235,9 @@ const QuestionPreview = ({
                       {["optiona", "optionb", "optionc", "optiond"].map(
                         (option, i) => {
                           const isCorrect =
+                            question.correctanswer === String.fromCharCode(97 + i) ||
                             question[option] === question.correctanswer;
+
                           return (
                             <Box
                               key={option}
@@ -307,8 +317,7 @@ const QuestionPreview = ({
                       >
                         💡 Explanation:
                       </Typography>
-                      <Typography
-                        variant="body2"
+                      <Box
                         sx={{
                           lineHeight: 1.7,
                           whiteSpace: "pre-wrap",
@@ -316,7 +325,7 @@ const QuestionPreview = ({
                         }}
                       >
                         <MathRenderer>{question.explanation}</MathRenderer>
-                      </Typography>
+                      </Box>
                     </Box>
                   )}
 
@@ -339,6 +348,15 @@ const QuestionPreview = ({
                     >
                       Edit
                     </Button>
+                    <Button
+                      size="small"
+                      startIcon={<Delete />}
+                      onClick={() => handleDeleteClick(question)}
+                      variant="outlined"
+                      color="error"
+                    >
+                      Delete
+                    </Button>
                   </Box>
                 </Box>
               </AccordionDetails>
@@ -360,21 +378,19 @@ const QuestionPreview = ({
         >
           ✓ Confirm & Create Test
         </Button>
-        <Button
-          variant="outlined"
-          onClick={() => {
-            if (typeof onRegenerate === "function") {
-              onRegenerate();
-            }
-          }}
-          sx={{ minWidth: 220, py: 1.2 }}
-          size="large"
-        >
-          ✗ Regenerate
-        </Button>
+        {onRegenerate && (
+          <Button
+            variant="outlined"
+            onClick={onRegenerate}
+            sx={{ minWidth: 220, py: 1.2 }}
+            size="large"
+          >
+            ✗ Regenerate
+          </Button>
+        )}
       </Box>
 
-      {/* ✅ FIXED: Edit Dialog */}
+      {/* Edit Dialog */}
       <Dialog
         open={editDialogOpen}
         onClose={() => setEditDialogOpen(false)}
@@ -433,7 +449,7 @@ const QuestionPreview = ({
             variant="outlined"
           />
           <TextField
-            label="Correct Answer"
+            label="Correct Answer (a/b/c/d)"
             fullWidth
             value={editFormData.correctanswer || ""}
             onChange={(e) => handleEditChange("correctanswer", e.target.value)}
@@ -452,7 +468,6 @@ const QuestionPreview = ({
         <DialogActions sx={{ p: 2 }}>
           <Button
             onClick={() => {
-              // ✅ FIXED: Call onEdit with updated data and close dialog
               if (onEdit) {
                 onEdit(editFormData);
               }
@@ -469,5 +484,6 @@ const QuestionPreview = ({
     </Box>
   );
 };
+
 
 export default QuestionPreview;

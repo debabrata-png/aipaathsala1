@@ -13,6 +13,7 @@ import {
   Select,
   FormControl,
   InputLabel,
+  Chip,
 } from "@mui/material";
 import { Send, ArrowBack, Quiz, CheckCircle } from "@mui/icons-material";
 import { DateTimePicker } from "@mui/x-date-pickers/DateTimePicker";
@@ -22,6 +23,9 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import ep3 from "../api/ep3";
 import global1 from "../pages/global1";
 import QuestionPreview from "./QuestionPreview";
+import ManualQuestionCreator from "./Test/QuestionManagement/ManualQuestionCreator";
+import { Create, AutoAwesome, ViewList } from "@mui/icons-material";
+import { Tabs, Tab } from "@mui/material";
 
 const CreateTestInterface = ({ course, onBack, onTestCreated }) => {
   // Chat flow state
@@ -64,10 +68,11 @@ const CreateTestInterface = ({ course, onBack, onTestCreated }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // AI Generation state
-  const [useAI, setUseAI] = useState(true);
   const [apiKeySettings, setApiKeySettings] = useState(null);
   const [isLoadingAPIKey, setIsLoadingAPIKey] = useState(false);
   const [generatedQuestions, setGeneratedQuestions] = useState([]);
+  const [manualQuestions, setManualQuestions] = useState([]);
+  const [questionMode, setQuestionMode] = useState("ai"); // 'ai', 'manual', 'mixed'
   const [isGenerating, setIsGenerating] = useState(false);
 
   const messagesEndRef = useRef(null);
@@ -142,10 +147,10 @@ const CreateTestInterface = ({ course, onBack, onTestCreated }) => {
   }, [messages]);
 
   useEffect(() => {
-    if (useAI && !apiKeySettings) {
+    if ((questionMode === "ai" || questionMode === "mixed") && !apiKeySettings) {
       fetchActiveAPIKey();
     }
-  }, [useAI]);
+  }, [questionMode]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -347,8 +352,7 @@ const CreateTestInterface = ({ course, onBack, onTestCreated }) => {
         });
         setTimeout(() => {
           addBotMessage(
-            `Section ${
-              currentSectionIndex + 2
+            `Section ${currentSectionIndex + 2
             }: What should we call this section?`
           );
         }, 1000);
@@ -498,9 +502,8 @@ const CreateTestInterface = ({ course, onBack, onTestCreated }) => {
           try {
             // ✅ Improved prompt for structured output
             const prompt = `
-Generate exactly ${totalQuestionCount} multiple-choice questions on ${
-              testData.topic
-            }.
+Generate exactly ${totalQuestionCount} multiple-choice questions on ${testData.topic
+              }.
 Difficulty: ${questionDifficulty.toUpperCase()}
 Each question MUST have exactly 4 options labeled A, B, C, and D.
 Return ONLY valid JSON with:
@@ -594,9 +597,8 @@ IMPORTANT: The correctanswer property must always be just one of: "a", "b", "c",
         );
 
         try {
-          const prompt = `Generate exactly ${totalQuestionCount} multiple-choice questions on "${
-            testData.topic
-          }".
+          const prompt = `Generate exactly ${totalQuestionCount} multiple-choice questions on "${testData.topic
+            }".
 
 Difficulty: ${questionDifficulty.toUpperCase()}
 Each question MUST have exactly 4 options (A, B, C, D).
@@ -679,9 +681,12 @@ Return ONLY valid JSON with structure: {"questions": [...]}`;
   const handleSubmitTest = async () => {
     setIsSubmitting(true);
     try {
-      const totalQuestions = sectionBased
-        ? getTotalQuestionsFromSections()
-        : totalQuestionCount || generatedQuestions.length;
+      const allQuestions = [...generatedQuestions, ...manualQuestions].map((q, idx) => ({
+        ...q,
+        questionnumber: idx + 1
+      }));
+
+      const totalQuestions = allQuestions.length;
 
       const payload = {
         name: global1.userName,
@@ -692,7 +697,10 @@ Return ONLY valid JSON with structure: {"questions": [...]}`;
         coursecode: course.coursecode,
         sectionBased,
         sections: sectionBased ? sections : [],
-        questions: generatedQuestions,
+        questions: [...generatedQuestions, ...manualQuestions].map((q, idx) => ({
+          ...q,
+          questionnumber: idx + 1
+        })),
         totalnoofquestion: totalQuestions,
         status: "draft",
         ispublished: false,
@@ -711,10 +719,8 @@ Return ONLY valid JSON with structure: {"questions": [...]}`;
 
       if (response.data.success) {
         addBotMessage(
-          `🎉 Test "${testData.testtitle}" created successfully with ${
-            generatedQuestions.length
-          } questions!${
-            sectionBased ? ` Organized into ${sections.length} sections.` : ""
+          `🎉 Test "${testData.testtitle}" created successfully with ${generatedQuestions.length
+          } questions!${sectionBased ? ` Organized into ${sections.length} sections.` : ""
           }`
         );
         setTimeout(() => {
@@ -761,23 +767,6 @@ Return ONLY valid JSON with structure: {"questions": [...]}`;
         </Box>
       </Paper>
 
-      {/* AI Toggle */}
-      <Paper>
-        <Box sx={{ p: 2, borderBottom: "1px solid #e0e0e0" }}>
-          <FormControlLabel
-            control={
-              <Switch
-                checked={useAI}
-                onChange={(e) => setUseAI(e.target.checked)}
-              />
-            }
-            label="Use Gemini AI to generate questions"
-          />
-          {useAI && isLoadingAPIKey && (
-            <CircularProgress size={20} sx={{ ml: 2 }} />
-          )}
-        </Box>
-      </Paper>
 
       {/* Chat Area */}
       <Box sx={{ flex: 1, p: 2, overflow: "auto" }}>
@@ -800,9 +789,8 @@ Return ONLY valid JSON with structure: {"questions": [...]}`;
                   backgroundColor:
                     message.type === "bot" ? "#f1f5f9" : "#3b82f6",
                   color: message.type === "bot" ? "#1e293b" : "white",
-                  border: `1px solid ${
-                    message.type === "bot" ? "#e2e8f0" : "#3b82f6"
-                  }`,
+                  border: `1px solid ${message.type === "bot" ? "#e2e8f0" : "#3b82f6"
+                    }`,
                 }}
               >
                 <Typography variant="body1" sx={{ whiteSpace: "pre-wrap" }}>
@@ -843,25 +831,25 @@ Return ONLY valid JSON with structure: {"questions": [...]}`;
                   flowStage === "basic"
                     ? testQuestions[currentStep]?.placeholder
                     : flowStage === "section-count"
-                    ? "Enter number of sections (1-10)"
-                    : flowStage === "no-section-setup"
-                    ? currentSectionStep === "questions"
-                      ? "Number of questions"
-                      : "easy, medium, or hard"
-                    : currentSectionStep === "name"
-                    ? "Section name"
-                    : currentSectionStep === "questions"
-                    ? "Number of questions"
-                    : "easy, medium, or hard"
+                      ? "Enter number of sections (1-10)"
+                      : flowStage === "no-section-setup"
+                        ? currentSectionStep === "questions"
+                          ? "Number of questions"
+                          : "easy, medium, or hard"
+                        : currentSectionStep === "name"
+                          ? "Section name"
+                          : currentSectionStep === "questions"
+                            ? "Number of questions"
+                            : "easy, medium, or hard"
                 }
                 size="small"
                 type={
                   (flowStage === "basic" &&
                     testQuestions[currentStep]?.type === "number") ||
-                  flowStage === "section-count" ||
-                  (flowStage === "no-section-setup" &&
-                    currentSectionStep === "questions") ||
-                  currentSectionStep === "questions"
+                    flowStage === "section-count" ||
+                    (flowStage === "no-section-setup" &&
+                      currentSectionStep === "questions") ||
+                    currentSectionStep === "questions"
                     ? "number"
                     : "text"
                 }
@@ -944,108 +932,124 @@ Return ONLY valid JSON with structure: {"questions": [...]}`;
 
       {/* Final Actions */}
       {flowStage === "ready" && isCompleted && (
-        <Box sx={{ p: 2, borderTop: "1px solid #e0e0e0" }}>
-          <Box sx={{ maxWidth: 800, mx: "auto" }}>
-            <Typography variant="h6" sx={{ mb: 2, textAlign: "center" }}>
-              Test Summary
-            </Typography>
-            <Box
-              sx={{ mb: 2, p: 2, backgroundColor: "#f8fafc", borderRadius: 2 }}
-            >
-              <Typography variant="body2">
-                <strong>Title:</strong> {testData.testtitle}
-              </Typography>
-              <Typography variant="body2">
-                <strong>Topic:</strong> {testData.topic}
-              </Typography>
-              <Typography variant="body2">
-                <strong>Duration:</strong> {testData.duration} minutes
-              </Typography>
-              {sectionBased ? (
-                <Typography variant="body2">
-                  <strong>Sections:</strong> {sections.length} sections,{" "}
-                  {getTotalQuestionsFromSections()} total questions
-                </Typography>
-              ) : (
-                <Typography variant="body2">
-                  <strong>Questions:</strong> {totalQuestionCount}{" "}
-                  {questionDifficulty} questions
-                </Typography>
+        <Box sx={{ borderTop: "1px solid #e2e8f0" }}>
+          <Tabs
+            value={questionMode}
+            onChange={(e, v) => setQuestionMode(v)}
+            centered
+            sx={{ borderBottom: 1, borderColor: 'divider' }}
+          >
+            <Tab icon={<AutoAwesome />} label="AI Generated" value="ai" />
+            <Tab icon={<Create />} label="Manual Entry" value="manual" />
+            <Tab icon={<ViewList />} label="Combined Preview" value="mixed" />
+          </Tabs>
+
+          <Box sx={{ p: 2 }}>
+            <Box sx={{ maxWidth: 800, mx: "auto" }}>
+              {questionMode === 'ai' && (
+                <Box>
+                  <Typography variant="h6" sx={{ mb: 2, textAlign: "center" }}>
+                    AI Generation
+                  </Typography>
+                  {apiKeySettings ? (
+                    <Box sx={{ display: 'flex', justifyContent: 'center', mb: 2 }}>
+                      <Button
+                        variant="contained"
+                        color="primary"
+                        onClick={async () => {
+                          await generateQuestionsWithGemini();
+                        }}
+                        disabled={isGenerating}
+                        startIcon={<Quiz />}
+                      >
+                        {isGenerating ? "Generating..." : "Generate Questions with AI"}
+                      </Button>
+                    </Box>
+                  ) : (
+                    <Alert severity="warning">Configure Gemini API key in Settings to use AI generation.</Alert>
+                  )}
+
+                  {generatedQuestions.length > 0 && (
+                    <QuestionPreview
+                      questions={generatedQuestions}
+                      sectionBased={sectionBased}
+                      onConfirm={() => setQuestionMode('mixed')}
+                      onRegenerate={handleRegenerate}
+                      onDelete={(q) => {
+                        setGeneratedQuestions(prev => prev.filter(item => item.questionnumber !== q.questionnumber));
+                      }}
+                      onEdit={(editedQuestion) => {
+                        setGeneratedQuestions((prevQuestions) =>
+                          prevQuestions.map((q) =>
+                            q.questionnumber === editedQuestion.questionnumber
+                              ? editedQuestion
+                              : q
+                          )
+                        );
+                      }}
+                    />
+                  )}
+                </Box>
+              )}
+
+              {questionMode === 'manual' && (
+                <ManualQuestionCreator
+                  sections={sections}
+                  sectionBased={sectionBased}
+                  existingQuestions={manualQuestions}
+                  onQuestionsChange={setManualQuestions}
+                />
+              )}
+
+              {questionMode === 'mixed' && (
+                <Box>
+                  <Typography variant="h6" sx={{ mb: 2, textAlign: "center" }}>
+                    Final Review ({generatedQuestions.length + manualQuestions.length} Questions)
+                  </Typography>
+
+                  <Box sx={{ mb: 3, display: 'flex', gap: 2, justifyContent: 'center' }}>
+                    <Chip label={`AI: ${generatedQuestions.length}`} color="primary" variant="outlined" />
+                    <Chip label={`Manual: ${manualQuestions.length}`} color="secondary" variant="outlined" />
+                  </Box>
+
+                  <QuestionPreview
+                    questions={[...generatedQuestions, ...manualQuestions].map((q, idx) => ({ ...q, questionnumber: idx + 1 }))}
+                    sectionBased={sectionBased}
+                    onConfirm={handleSubmitTest}
+                    onDelete={(q) => {
+                      if (q.isgenerated) {
+                        setGeneratedQuestions(prev => prev.filter(item => item.questionnumber !== q.questionnumber));
+                      } else {
+                        setManualQuestions(prev => prev.filter(item => item.id !== q.id));
+                      }
+                    }}
+                    onEdit={(edited) => {
+                      if (edited.isgenerated) {
+                        setGeneratedQuestions(prev => prev.map(q => q.questionnumber === edited.questionnumber ? edited : q));
+                      } else {
+                        setManualQuestions(prev => prev.map(q => q.id === edited.id ? edited : q));
+                      }
+                    }}
+                  />
+
+                  <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}>
+                    <Button
+                      variant="contained"
+                      color="success"
+                      size="large"
+                      onClick={handleSubmitTest}
+                      disabled={isSubmitting || (generatedQuestions.length + manualQuestions.length === 0)}
+                      startIcon={<CheckCircle />}
+                      sx={{ px: 8 }}
+                    >
+                      {isSubmitting ? "Creating..." : "Create Test Final"}
+                    </Button>
+                  </Box>
+                </Box>
               )}
             </Box>
-
-            <Box
-              sx={{
-                display: "flex",
-                gap: 2,
-                justifyContent: "center",
-                flexWrap: "wrap",
-              }}
-            >
-              {useAI && apiKeySettings && (
-                <Button
-                  variant="contained"
-                  color="primary"
-                  onClick={async () => {
-                    await generateQuestionsWithGemini();
-                    setShowPreview(true);
-                  }}
-                  disabled={
-                    isGenerating || (sectionBased && sections.length === 0)
-                  }
-                  startIcon={<Quiz />}
-                >
-                  {isGenerating
-                    ? "Generating..."
-                    : "Generate Questions with AI"}
-                </Button>
-              )}
-
-              <Button
-                variant="contained"
-                color="success"
-                onClick={handleSubmitTest}
-                disabled={
-                  isSubmitting || (useAI && generatedQuestions.length === 0)
-                }
-                startIcon={<CheckCircle />}
-              >
-                {isSubmitting ? "Creating..." : "Create Test"}
-              </Button>
-            </Box>
-
-            {generatedQuestions.length > 0 && (
-              <Alert severity="success" sx={{ mt: 2 }}>
-                Generated {generatedQuestions.length} questions successfully!{" "}
-                {sectionBased &&
-                  "Each section has the difficulty level you specified."}
-              </Alert>
-            )}
           </Box>
         </Box>
-      )}
-      {showPreview && generatedQuestions.length > 0 && (
-        <QuestionPreview
-          questions={generatedQuestions}
-          sectionBased={sectionBased}
-          onConfirm={handleSubmitTest}
-          onRegenerate={handleRegenerate}
-          onEdit={(editedQuestion) => {
-            // ✅ FIXED: Update state and show confirmation
-            setGeneratedQuestions((prevQuestions) =>
-              prevQuestions.map((q) =>
-                q.questionnumber === editedQuestion.questionnumber
-                  ? editedQuestion
-                  : q
-              )
-            );
-
-            // Show success message in chat
-            addBotMessage(
-              `✏️ Question ${editedQuestion.questionnumber} updated successfully!`
-            );
-          }}
-        />
       )}
     </Box>
   );

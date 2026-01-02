@@ -66,11 +66,14 @@ import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import ep3 from "../api/ep3";
 import global1 from "../pages/global1";
+import TestQuestionManager from "./Test/QuestionManagement/TestQuestionManager";
 
-const ManageTestInterface = ({ test, onBack }) => {
+const ManageTestInterface = ({ test: initialTest, onBack }) => {
+  const [test, setTest] = useState(initialTest);
   const [activeTab, setActiveTab] = useState(0);
   const [submissions, setSubmissions] = useState([]);
   const [eligibleStudents, setEligibleStudents] = useState([]);
+  const [disconnectedStudents, setDisconnectedStudents] = useState([]); // New state for resume
   const [loading, setLoading] = useState(false);
   const [studentsLoading, setStudentsLoading] = useState(false);
   const [editMode, setEditMode] = useState(false);
@@ -88,6 +91,8 @@ const ManageTestInterface = ({ test, onBack }) => {
     accessibility: test.accessibility || "standard",
     randomizequestions: test.randomizequestions || false,
     preventcopy: test.preventcopy || false,
+    allowResume: test.allowResume || false, // New field
+    resumeTimeLimit: test.resumeTimeLimit || 10 // New field
   });
   const [publishDialog, setPublishDialog] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -98,10 +103,11 @@ const ManageTestInterface = ({ test, onBack }) => {
   });
 
   useEffect(() => {
-    if (activeTab === 2) {
+    if (activeTab === 3) { // Note: Student Permissions is tab 3
       fetchEligibleStudents();
+      fetchDisconnectedStudents(); // Fetch disconnected too
     }
-    if (activeTab === 3) {
+    if (activeTab === 4) { // Submissions is tab 4
       fetchSubmissions();
     }
   }, [activeTab]);
@@ -120,6 +126,17 @@ const ManageTestInterface = ({ test, onBack }) => {
       showSnackbar("Error loading students", "error");
     } finally {
       setStudentsLoading(false);
+    }
+  };
+
+  const fetchDisconnectedStudents = async () => {
+    try {
+      const response = await ep3.get('/getdisconnectedstudents', {
+        params: { testid: test._id, colid: global1.colid }
+      });
+      if (response.data.success) setDisconnectedStudents(response.data.data);
+    } catch (err) {
+      console.error("Error fetching disconnected students", err);
     }
   };
 
@@ -210,32 +227,51 @@ const ManageTestInterface = ({ test, onBack }) => {
     }
   };
 
-  const handleAllowRetake = async (studentId) => {
-  try {
-    const response = await ep3.post('/allowstudentretake1', {
-      testid: test._id,
-      studentid: studentId,
-      user: global1.userEmail,
-      colid: global1.colid
-    });
+  const handleAllowResume = async (studentId) => {
+    try {
+      const response = await ep3.post('/allowresume', {
+        testid: test._id,
+        studentid: studentId,
+        user: global1.userEmail,
+        colid: global1.colid,
+        facultyName: global1.userName
+      });
+      if (response.data.success) {
+        showSnackbar('Resume allowed successfully!', 'success');
+        fetchEligibleStudents();
+        fetchDisconnectedStudents();
+      }
+    } catch (err) {
+      showSnackbar(err.response?.data?.message || 'Failed to allow resume', 'error');
+    }
+  };
 
-    if (response.data.success) {
-      showSnackbar('Student can now retake the test!', 'success');
-      // Refresh both students and submissions data
-      fetchEligibleStudents();
-      fetchSubmissions();
-    } else {
-      showSnackbar(response.data.message || 'Failed to allow retake', 'error');
+  const handleAllowRetake = async (studentId) => {
+    try {
+      const response = await ep3.post('/allowstudentretake2', { // Updated to V2
+        testid: test._id,
+        studentid: studentId,
+        user: global1.userEmail,
+        colid: global1.colid
+      });
+
+      if (response.data.success) {
+        showSnackbar('Student can now retake the test!', 'success');
+        // Refresh both students and submissions data
+        fetchEligibleStudents();
+        fetchSubmissions();
+      } else {
+        showSnackbar(response.data.message || 'Failed to allow retake', 'error');
+      }
+    } catch (error) {
+      console.error('Allow retake error:', error);
+      if (error.response?.data?.message) {
+        showSnackbar(error.response.data.message, 'error');
+      } else {
+        showSnackbar('Error allowing retake', 'error');
+      }
     }
-  } catch (error) {
-    console.error('Allow retake error:', error);
-    if (error.response?.data?.message) {
-      showSnackbar(error.response.data.message, 'error');
-    } else {
-      showSnackbar('Error allowing retake', 'error');
-    }
-  }
-};
+  };
 
   // Enhanced PDF export with pagination
   const exportToPDF = async () => {
@@ -264,15 +300,14 @@ const ManageTestInterface = ({ test, onBack }) => {
       const averageScore =
         submissions.length > 0
           ? submissions.reduce((sum, s) => sum + (s.percentage || 0), 0) /
-            submissions.length
+          submissions.length
           : 0;
 
       doc.text(`Total Students: ${totalSubmissions}`, 20, 65);
       doc.text(
-        `Passed: ${passedSubmissions} (${
-          totalSubmissions > 0
-            ? ((passedSubmissions / totalSubmissions) * 100).toFixed(1)
-            : 0
+        `Passed: ${passedSubmissions} (${totalSubmissions > 0
+          ? ((passedSubmissions / totalSubmissions) * 100).toFixed(1)
+          : 0
         }%)`,
         20,
         75
@@ -368,7 +403,7 @@ const ManageTestInterface = ({ test, onBack }) => {
     const averageScore =
       submissions.length > 0
         ? submissions.reduce((sum, s) => sum + (s.percentage || 0), 0) /
-          submissions.length
+        submissions.length
         : 0;
 
     return { totalSubmissions, passedSubmissions, averageScore };
@@ -442,6 +477,7 @@ const ManageTestInterface = ({ test, onBack }) => {
           >
             <Tab icon={<Quiz />} label="Test Details" />
             <Tab icon={<Settings />} label="Test Settings" />
+            <Tab icon={<Quiz />} label="Questions" />
             <Tab icon={<People />} label="Student Permissions" />
             <Tab icon={<Assessment />} label="Submissions & Results" />
           </Tabs>
@@ -775,6 +811,29 @@ const ManageTestInterface = ({ test, onBack }) => {
                                 helperText="Minimum score to pass the test"
                               />
                             </Grid>
+                            <Grid item xs={12} md={6}>
+                              <FormControlLabel
+                                control={
+                                  <Switch
+                                    checked={editedTest.globalNegativeMarking || false}
+                                    onChange={(e) => setEditedTest({ ...editedTest, globalNegativeMarking: e.target.checked })}
+                                  />
+                                }
+                                label="Global Negative Marking"
+                              />
+                            </Grid>
+                            {editedTest.globalNegativeMarking && (
+                              <Grid item xs={12} md={6}>
+                                <TextField
+                                  label="Negative Marks (per wrong answer)"
+                                  type="number"
+                                  value={editedTest.globalNegativeMarks || 0}
+                                  onChange={(e) => setEditedTest({ ...editedTest, globalNegativeMarks: Number(e.target.value) })}
+                                  fullWidth
+                                  inputProps={{ min: 0, step: 0.25 }}
+                                />
+                              </Grid>
+                            )}
                           </Grid>
                         </Box>
 
@@ -809,6 +868,28 @@ const ManageTestInterface = ({ test, onBack }) => {
                               }
                               label="Allow Multiple Attempts"
                             />
+
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                              <FormControlLabel
+                                control={
+                                  <Switch
+                                    checked={editedTest.allowResume || false}
+                                    onChange={(e) => setEditedTest({ ...editedTest, allowResume: e.target.checked })}
+                                  />
+                                }
+                                label="Allow Exam Resume (Disconnect Protection)"
+                              />
+                              {editedTest.allowResume && (
+                                <TextField
+                                  label="Window (mins)"
+                                  type="number"
+                                  size="small"
+                                  value={editedTest.resumeTimeLimit || 10}
+                                  onChange={(e) => setEditedTest({ ...editedTest, resumeTimeLimit: Number(e.target.value) })}
+                                  sx={{ width: 120 }}
+                                />
+                              )}
+                            </Box>
 
                             {editedTest.allowretake && (
                               <TextField
@@ -1052,9 +1133,8 @@ const ManageTestInterface = ({ test, onBack }) => {
                             <ListItem>
                               <ListItemText
                                 primary="Time Warning"
-                                secondary={`${
-                                  test.timewarning || 5
-                                } minutes before end`}
+                                secondary={`${test.timewarning || 5
+                                  } minutes before end`}
                               />
                             </ListItem>
                             <ListItem>
@@ -1075,7 +1155,7 @@ const ManageTestInterface = ({ test, onBack }) => {
                     )}
                   </CardContent>
                 </Card>
-              </Grid>
+              </Grid >
 
               <Grid item xs={12} md={4}>
                 <Card>
@@ -1116,11 +1196,23 @@ const ManageTestInterface = ({ test, onBack }) => {
                   </CardContent>
                 </Card>
               </Grid>
-            </Grid>
+            </Grid >
+          )}
+
+          {/* Questions Tab */}
+          {activeTab === 2 && (
+            <TestQuestionManager
+              test={test}
+              onBack={() => setActiveTab(0)}
+              onUpdate={(updatedTest) => {
+                setTest(updatedTest);
+                setEditedTest({ ...updatedTest });
+              }}
+            />
           )}
 
           {/* Student Permissions Tab - SIMPLIFIED RETAKE LOGIC */}
-          {activeTab === 2 && (
+          {activeTab === 3 && (
             <Card>
               <CardContent>
                 <Box
@@ -1154,6 +1246,45 @@ const ManageTestInterface = ({ test, onBack }) => {
                   Faculty can allow any student who has taken the exam to retake
                   it.
                 </Alert>
+
+                {disconnectedStudents.length > 0 && (
+                  <Box sx={{ mb: 4, p: 2, bgcolor: '#fff3e0', borderRadius: 1, border: '1px solid #ffcc80' }}>
+                    <Typography variant="subtitle1" color="error" sx={{ mb: 1, fontWeight: 'bold' }}>
+                      ⚠️ Session Terminated / Resume Requests
+                    </Typography>
+                    <TableContainer component={Paper} elevation={0}>
+                      <Table size="small">
+                        <TableHead>
+                          <TableRow>
+                            <TableCell>Student</TableCell>
+                            <TableCell>Terminated At</TableCell>
+                            <TableCell>Time Remaining</TableCell>
+                            <TableCell>Action</TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {disconnectedStudents.map((ds) => (
+                            <TableRow key={ds._id}>
+                              <TableCell>{ds.name} ({ds.studentid})</TableCell>
+                              <TableCell>{ds.sessionTerminatedAt ? new Date(ds.sessionTerminatedAt).toLocaleString() : 'N/A'}</TableCell>
+                              <TableCell>{ds.timeremaining ? `${Math.floor(ds.timeremaining / 60)}m ${ds.timeremaining % 60}s` : 'N/A'}</TableCell>
+                              <TableCell>
+                                <Button
+                                  size="small"
+                                  variant="contained"
+                                  color="warning"
+                                  onClick={() => handleAllowResume(ds.studentid)}
+                                >
+                                  Allow Resume
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
+                  </Box>
+                )}
 
                 {studentsLoading ? (
                   <Box
@@ -1193,9 +1324,8 @@ const ManageTestInterface = ({ test, onBack }) => {
                             </TableCell>
                             <TableCell>
                               <Chip
-                                label={`${
-                                  student.submissionCount || 0
-                                } attempts`}
+                                label={`${student.submissionCount || 0
+                                  } attempts`}
                                 size="small"
                                 color={
                                   student.submissionCount > 0
@@ -1220,35 +1350,65 @@ const ManageTestInterface = ({ test, onBack }) => {
                               />
                             </TableCell>
                             <TableCell>
-                              {/* SIMPLE LOGIC: If student has submitted (submissionCount > 0), show Allow Retake button */}
-                              {(() => {
-                                const hasSubmitted =
-                                  student.submissionCount > 0 ||
-                                  submissions.some(
-                                    (sub) =>
-                                      sub.studentid === student.studentId ||
-                                      sub.regno === student.regno
-                                  );
+                              <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
+                                {(() => {
+                                  const submission = student.latestSubmission;
+                                  const hasAnyAttempt = student.submissionCount > 0 || !!submission;
 
-                                return hasSubmitted ? (
-                                  <Button
-                                    variant="contained"
-                                    color="warning"
-                                    size="small"
-                                    onClick={() =>
-                                      handleAllowRetake(student.studentId)
-                                    }
-                                  >
-                                    Allow Retake
-                                  </Button>
-                                ) : (
-                                  <Chip
-                                    label="Not Attempted"
-                                    color="default"
-                                    size="small"
-                                  />
-                                );
-                              })()}
+                                  if (!hasAnyAttempt) {
+                                    return (
+                                      <Chip
+                                        label="Not Attempted"
+                                        color="default"
+                                        size="small"
+                                      />
+                                    );
+                                  }
+
+                                  const isResumable =
+                                    submission &&
+                                    (submission.status === "started" ||
+                                      submission.status === "in-progress" ||
+                                      submission.status === "submitted");
+
+                                  return (
+                                    <>
+                                      {/* Allow Resume Button - Only for active/disconnected sessions */}
+                                      {isResumable && !submission.canResume ? (
+                                        <Button
+                                          variant="contained"
+                                          color="info"
+                                          size="small"
+                                          onClick={() =>
+                                            handleAllowResume(student.studentId)
+                                          }
+                                        >
+                                          Allow Resume
+                                        </Button>
+                                      ) : submission?.canResume ? (
+                                        <Chip
+                                          label="Resume Allowed"
+                                          color="info"
+                                          size="small"
+                                          variant="outlined"
+                                        />
+                                      ) : null}
+
+                                      {/* Allow Retake Button - Available for any existing attempt */}
+                                      <Button
+                                        variant="contained"
+                                        color="warning"
+                                        size="small"
+                                        onClick={() =>
+                                          handleAllowRetake(student.studentId)
+                                        }
+                                      >
+                                        Allow Retake
+                                      </Button>
+                                    </>
+                                  );
+                                })()}
+                              </Box>
                             </TableCell>
                           </TableRow>
                         ))}
@@ -1258,180 +1418,183 @@ const ManageTestInterface = ({ test, onBack }) => {
                 )}
               </CardContent>
             </Card>
-          )}
+          )
+          }
 
           {/* Submissions Tab */}
-          {activeTab === 3 && (
-            <Box>
-              <Grid container spacing={3} sx={{ mb: 3 }}>
-                <Grid item xs={12} md={4}>
-                  <Card>
-                    <CardContent sx={{ textAlign: "center" }}>
-                      <Typography
-                        variant="h3"
-                        sx={{ fontWeight: 600, color: "primary.main" }}
-                      >
-                        {stats.totalSubmissions}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        Total Submissions
-                      </Typography>
-                    </CardContent>
-                  </Card>
-                </Grid>
-                <Grid item xs={12} md={4}>
-                  <Card>
-                    <CardContent sx={{ textAlign: "center" }}>
-                      <Typography
-                        variant="h3"
-                        sx={{ fontWeight: 600, color: "success.main" }}
-                      >
-                        {stats.passedSubmissions}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        Passed (
-                        {stats.totalSubmissions > 0
-                          ? (
+          {
+            activeTab === 4 && (
+              <Box>
+                <Grid container spacing={3} sx={{ mb: 3 }}>
+                  <Grid item xs={12} md={4}>
+                    <Card>
+                      <CardContent sx={{ textAlign: "center" }}>
+                        <Typography
+                          variant="h3"
+                          sx={{ fontWeight: 600, color: "primary.main" }}
+                        >
+                          {stats.totalSubmissions}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          Total Submissions
+                        </Typography>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                  <Grid item xs={12} md={4}>
+                    <Card>
+                      <CardContent sx={{ textAlign: "center" }}>
+                        <Typography
+                          variant="h3"
+                          sx={{ fontWeight: 600, color: "success.main" }}
+                        >
+                          {stats.passedSubmissions}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          Passed (
+                          {stats.totalSubmissions > 0
+                            ? (
                               (stats.passedSubmissions /
                                 stats.totalSubmissions) *
                               100
                             ).toFixed(1)
-                          : 0}
-                        %)
-                      </Typography>
-                    </CardContent>
-                  </Card>
+                            : 0}
+                          %)
+                        </Typography>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                  <Grid item xs={12} md={4}>
+                    <Card>
+                      <CardContent sx={{ textAlign: "center" }}>
+                        <Typography
+                          variant="h3"
+                          sx={{ fontWeight: 600, color: "info.main" }}
+                        >
+                          {stats.averageScore.toFixed(1)}%
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          Average Score
+                        </Typography>
+                      </CardContent>
+                    </Card>
+                  </Grid>
                 </Grid>
-                <Grid item xs={12} md={4}>
-                  <Card>
-                    <CardContent sx={{ textAlign: "center" }}>
-                      <Typography
-                        variant="h3"
-                        sx={{ fontWeight: 600, color: "info.main" }}
-                      >
-                        {stats.averageScore.toFixed(1)}%
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        Average Score
-                      </Typography>
-                    </CardContent>
-                  </Card>
-                </Grid>
-              </Grid>
 
-              <Card>
-                <CardContent>
-                  <Box
-                    sx={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      mb: 2,
-                    }}
-                  >
-                    <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                      Student Submissions ({submissions.length})
-                    </Typography>
-                    <Button
-                      startIcon={
-                        exporting ? (
-                          <CircularProgress size={16} />
-                        ) : (
-                          <PictureAsPdf />
-                        )
-                      }
-                      onClick={exportToPDF}
-                      variant="contained"
-                      color="primary"
-                      disabled={exporting || submissions.length === 0}
-                      size="small"
-                    >
-                      {exporting
-                        ? "Generating PDF..."
-                        : `Export ${submissions.length} Results to PDF`}
-                    </Button>
-                  </Box>
-
-                  {loading ? (
+                <Card>
+                  <CardContent>
                     <Box
-                      sx={{ display: "flex", justifyContent: "center", py: 4 }}
+                      sx={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        mb: 2,
+                      }}
                     >
-                      <CircularProgress />
+                      <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                        Student Submissions ({submissions.length})
+                      </Typography>
+                      <Button
+                        startIcon={
+                          exporting ? (
+                            <CircularProgress size={16} />
+                          ) : (
+                            <PictureAsPdf />
+                          )
+                        }
+                        onClick={exportToPDF}
+                        variant="contained"
+                        color="primary"
+                        disabled={exporting || submissions.length === 0}
+                        size="small"
+                      >
+                        {exporting
+                          ? "Generating PDF..."
+                          : `Export ${submissions.length} Results to PDF`}
+                      </Button>
                     </Box>
-                  ) : (
-                    <TableContainer>
-                      <Table>
-                        <TableHead>
-                          <TableRow>
-                            <TableCell>Student Name</TableCell>
-                            <TableCell>Score</TableCell>
-                            <TableCell>Percentage</TableCell>
-                            <TableCell>Status</TableCell>
-                            <TableCell>Submitted At</TableCell>
-                          </TableRow>
-                        </TableHead>
-                        <TableBody>
-                          {submissions.map((submission, index) => (
-                            <TableRow key={submission._id}>
-                              <TableCell>
-                                {submission.name || "Unknown"}
-                              </TableCell>
-                              <TableCell>
-                                {submission.totalscore || 0}/
-                                {test.totalnoofquestion || 0}
-                              </TableCell>
-                              <TableCell>
-                                <Chip
-                                  label={
-                                    submission.percentage !== undefined &&
-                                    submission.percentage !== null
-                                      ? `${parseFloat(
+
+                    {loading ? (
+                      <Box
+                        sx={{ display: "flex", justifyContent: "center", py: 4 }}
+                      >
+                        <CircularProgress />
+                      </Box>
+                    ) : (
+                      <TableContainer>
+                        <Table>
+                          <TableHead>
+                            <TableRow>
+                              <TableCell>Student Name</TableCell>
+                              <TableCell>Score</TableCell>
+                              <TableCell>Percentage</TableCell>
+                              <TableCell>Status</TableCell>
+                              <TableCell>Submitted At</TableCell>
+                            </TableRow>
+                          </TableHead>
+                          <TableBody>
+                            {submissions.map((submission, index) => (
+                              <TableRow key={submission._id}>
+                                <TableCell>
+                                  {submission.name || "Unknown"}
+                                </TableCell>
+                                <TableCell>
+                                  {submission.totalscore || 0}/
+                                  {test.totalnoofquestion || 0}
+                                </TableCell>
+                                <TableCell>
+                                  <Chip
+                                    label={
+                                      submission.percentage !== undefined &&
+                                        submission.percentage !== null
+                                        ? `${parseFloat(
                                           submission.percentage
                                         ).toFixed(1)}%`
-                                      : "N/A"
-                                  }
-                                  color={
-                                    submission.passed ? "success" : "error"
-                                  }
-                                  size="small"
-                                />
-                              </TableCell>
-                              <TableCell>
-                                <Chip
-                                  label={submission.status}
-                                  size="small"
-                                  variant="outlined"
-                                />
-                              </TableCell>
-                              <TableCell>
-                                {submission.submissiondate
-                                  ? formatDate(submission.submissiondate)
-                                  : "N/A"}
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                          {submissions.length === 0 && (
-                            <TableRow>
-                              <TableCell
-                                colSpan={5}
-                                sx={{ textAlign: "center", py: 4 }}
-                              >
-                                No submissions yet
-                              </TableCell>
-                            </TableRow>
-                          )}
-                        </TableBody>
-                      </Table>
-                    </TableContainer>
-                  )}
-                </CardContent>
-              </Card>
-            </Box>
-          )}
-        </Box>
+                                        : "N/A"
+                                    }
+                                    color={
+                                      submission.passed ? "success" : "error"
+                                    }
+                                    size="small"
+                                  />
+                                </TableCell>
+                                <TableCell>
+                                  <Chip
+                                    label={submission.status}
+                                    size="small"
+                                    variant="outlined"
+                                  />
+                                </TableCell>
+                                <TableCell>
+                                  {submission.submissiondate
+                                    ? formatDate(submission.submissiondate)
+                                    : "N/A"}
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                            {submissions.length === 0 && (
+                              <TableRow>
+                                <TableCell
+                                  colSpan={5}
+                                  sx={{ textAlign: "center", py: 4 }}
+                                >
+                                  No submissions yet
+                                </TableCell>
+                              </TableRow>
+                            )}
+                          </TableBody>
+                        </Table>
+                      </TableContainer>
+                    )}
+                  </CardContent>
+                </Card>
+              </Box>
+            )
+          }
+        </Box >
 
         {/* Publish Dialog */}
-        <Dialog open={publishDialog} onClose={() => setPublishDialog(false)}>
+        < Dialog open={publishDialog} onClose={() => setPublishDialog(false)}>
           <DialogTitle>
             {test.ispublished ? "Unpublish Test" : "Publish Test"}
           </DialogTitle>
@@ -1448,10 +1611,10 @@ const ManageTestInterface = ({ test, onBack }) => {
               {test.ispublished ? "Unpublish" : "Publish"}
             </Button>
           </DialogActions>
-        </Dialog>
+        </Dialog >
 
         {/* Snackbar for notifications */}
-        <Snackbar
+        < Snackbar
           open={snackbar.open}
           autoHideDuration={4000}
           onClose={() => setSnackbar({ ...snackbar, open: false })}
@@ -1463,9 +1626,9 @@ const ManageTestInterface = ({ test, onBack }) => {
           >
             {snackbar.message}
           </Alert>
-        </Snackbar>
-      </Box>
-    </LocalizationProvider>
+        </Snackbar >
+      </Box >
+    </LocalizationProvider >
   );
 };
 

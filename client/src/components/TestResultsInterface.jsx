@@ -42,6 +42,7 @@ import {
 } from "@mui/icons-material";
 import ep3 from "../api/ep3";
 import global1 from "../pages/global1";
+import MathRenderer from "./MathRenderer";
 
 const TestResultsInterface = () => {
   const [results, setResults] = useState([]);
@@ -208,8 +209,8 @@ const TestResultsInterface = () => {
                     Tests Passed (
                     {stats.totalTests > 0
                       ? ((stats.passedTests / stats.totalTests) * 100).toFixed(
-                          0
-                        )
+                        0
+                      )
                       : 0}
                     %)
                   </Typography>
@@ -225,8 +226,8 @@ const TestResultsInterface = () => {
                 stats.averageScore >= 70
                   ? "success"
                   : stats.averageScore >= 50
-                  ? "info"
-                  : "warning"
+                    ? "info"
+                    : "warning"
               }
               sx={{ mb: 3 }}
             >
@@ -420,15 +421,14 @@ const TestResultsInterface = () => {
                               {section.sectionName}
                             </Typography>
                             <Chip
-                              label={`${
-                                section.sectionPercentage?.toFixed(1) || 0
-                              }%`}
+                              label={`${section.sectionPercentage?.toFixed(1) || 0
+                                }%`}
                               color={
                                 section.sectionPercentage >= 70
                                   ? "success"
                                   : section.sectionPercentage >= 50
-                                  ? "warning"
-                                  : "error"
+                                    ? "warning"
+                                    : "error"
                               }
                               size="small"
                             />
@@ -481,14 +481,9 @@ const TestResultsInterface = () => {
                             )}
                             <TableCell>
                               {answer.selectedanswer ? (
-                                <Typography variant="body2" noWrap>
-                                  {answer.selectedanswer.length > 50
-                                    ? `${answer.selectedanswer.substring(
-                                        0,
-                                        50
-                                      )}...`
-                                    : answer.selectedanswer}
-                                </Typography>
+                                <Box sx={{ maxWidth: 300 }}>
+                                  <MathRenderer>{answer.selectedanswer}</MathRenderer>
+                                </Box>
                               ) : (
                                 <Typography
                                   variant="body2"
