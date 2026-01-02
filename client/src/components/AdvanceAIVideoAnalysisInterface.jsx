@@ -34,7 +34,7 @@ import {
   Schedule,
   TrendingUp,
 } from "@mui/icons-material";
-import io from "socket.io-client";
+import socketInstance from "../api/ep2";
 import ep3 from "../api/ep3";
 import global1 from "../pages/global1";
 import TextToSpeech from './TextToSpeech';
@@ -66,22 +66,18 @@ const AdvanceAIVideoAnalysisInterface = () => {
 
   // ✅ NEW: Initialize socket connection for real-time updates
   useEffect(() => {
-    //const newSocket = io("https://localhost:8000", {
-    const newSocket = io("https://epaathsala.azurewebsites.net", {
-      transports: ["polling", "websocket"],
-      upgrade: true,
-      reconnection: true,
-    });
-
-    setSocket(newSocket);
+    if (!socketInstance.connected) {
+      socketInstance.connect();
+    }
+    setSocket(socketInstance);
 
     // ✅ Listen for AI analysis status updates
-    newSocket.on("ai_analysis_status_update", (statusUpdate) => {
+    socketInstance.on("ai_analysis_status_update", (statusUpdate) => {
       fetchAIAnalyses();
     });
 
     // ✅ Listen for new AI messages
-    newSocket.on("receive_ai_message", (messageData) => {
+    socketInstance.on("receive_ai_message", (messageData) => {
       if (messageData.msgtype === "ai_analysis") {
         fetchAIAnalyses();
         fetchScheduledClasses();
@@ -89,8 +85,9 @@ const AdvanceAIVideoAnalysisInterface = () => {
     });
 
     return () => {
-      if (newSocket) {
-        newSocket.disconnect();
+      if (socketInstance) {
+        socketInstance.off("ai_analysis_status_update");
+        socketInstance.off("receive_ai_message");
       }
     };
   }, []);
@@ -715,17 +712,17 @@ const AdvanceAIVideoAnalysisInterface = () => {
                           {["searching", "analyzing", "generating"].includes(
                             analysis.status
                           ) && (
-                            <Box sx={{ mt: 1 }}>
-                              <LinearProgress />
-                              <Typography
-                                variant="caption"
-                                color="textSecondary"
-                              >
-                                ✨ Real-time updates active - status will update
-                                automatically
-                              </Typography>
-                            </Box>
-                          )}
+                              <Box sx={{ mt: 1 }}>
+                                <LinearProgress />
+                                <Typography
+                                  variant="caption"
+                                  color="textSecondary"
+                                >
+                                  ✨ Real-time updates active - status will update
+                                  automatically
+                                </Typography>
+                              </Box>
+                            )}
                         </Box>
                       }
                     />
@@ -775,9 +772,8 @@ const AdvanceAIVideoAnalysisInterface = () => {
                   🔊 Voice Assistance Available
                 </Typography>
                 <TextToSpeech
-                  text={`Complete AI Analysis for ${selectedAnalysis.topic}. ${
-                    selectedAnalysis.aiSummary
-                  } ${selectedAnalysis.assignmentData?.description || ""}`}
+                  text={`Complete AI Analysis for ${selectedAnalysis.topic}. ${selectedAnalysis.aiSummary
+                    } ${selectedAnalysis.assignmentData?.description || ""}`}
                   title="Listen to complete analysis details"
                   variant="button"
                   size="medium"
@@ -897,9 +893,8 @@ const AdvanceAIVideoAnalysisInterface = () => {
               >
                 <Typography variant="h6">🎯 Learning Objectives</Typography>
                 <TextToSpeech
-                  text={`Learning Objectives: ${
-                    selectedAnalysis.learningObjectives?.join(". ") || ""
-                  }`}
+                  text={`Learning Objectives: ${selectedAnalysis.learningObjectives?.join(". ") || ""
+                    }`}
                   variant="chip"
                   size="small"
                 />

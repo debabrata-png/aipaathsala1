@@ -12,7 +12,7 @@ import { Assignment, MenuBook, Folder } from '@mui/icons-material';
 import SyllabusRoom from './SyllabusRoom';
 import AssignmentRoom from './AssignmentRoom';
 import CourseMaterialRoom from './CourseMaterialRoom';
-import io from 'socket.io-client';
+import socketInstance from "../api/ep2";
 import global1 from '../pages/global1';
 
 const ChatInterface = ({ course, selectedRoom, onRoomChange }) => {
@@ -25,79 +25,81 @@ const ChatInterface = ({ course, selectedRoom, onRoomChange }) => {
   useEffect(() => {
     if (!course) return;
 
-    
-    // Clean up existing socket
-    if (socketRef.current) {
-      socketRef.current.close();
+    // Use the centralized socket instance
+    if (!socketInstance.connected) {
+      socketInstance.connect();
     }
-    
-    const newSocket = io('https://epaathsala.azurewebsites.net',
-    //const newSocket = io('http://localhost:8000',
-     {
-      transports: ['websocket'],
-      forceNew: true,
-      reconnection: true,
-      timeout: 20000,
-    });
-    
-    setSocket(newSocket);
-    socketRef.current = newSocket;
+    setSocket(socketInstance);
+    socketRef.current = socketInstance;
 
-    newSocket.on('connect', () => {
-      setConnectionStatus('connected');
-      
+    const handleConnect = () => {
+      setConnectionStatus("connected");
+
       // Join ALL rooms immediately after connection
       const allRooms = [
         `${course.coursecode}_syllabus`,
         `${course.coursecode}_assignments`,
-        `${course.coursecode}_materials`
+        `${course.coursecode}_materials`,
       ];
 
-      allRooms.forEach(room => {
-        newSocket.emit('join_room', {
+      allRooms.forEach((room) => {
+        socketInstance.emit("join_room", {
           room,
           userEmail: global1.userEmail,
           userName: global1.userName,
           userRole: global1.userRole,
-          courseId: course._id
+          courseId: course._id,
         });
       });
 
       // Test all rooms
       setTimeout(() => {
-        allRooms.forEach(room => {
-          newSocket.emit('test_room', { room });
+        allRooms.forEach((room) => {
+          socketInstance.emit("test_room", { room });
         });
       }, 1000);
-    });
+    };
 
-    newSocket.on('disconnect', () => {
-      setConnectionStatus('disconnected');
-    });
+    const handleDisconnect = () => {
+      setConnectionStatus("disconnected");
+    };
 
-    newSocket.on('connect_error', (error) => {
-      setConnectionStatus('error');
-    });
+    const handleConnectError = (error) => {
+      setConnectionStatus("error");
+    };
+
+    socketInstance.on("connect", handleConnect);
+    socketInstance.on("disconnect", handleDisconnect);
+    socketInstance.on("connect_error", handleConnectError);
+
+    // If already connected, trigger handleConnect manually
+    if (socketInstance.connected) {
+      handleConnect();
+    }
 
     return () => {
-      if (newSocket && newSocket.connected) {
+      if (socketInstance) {
         const allRooms = [
           `${course.coursecode}_syllabus`,
           `${course.coursecode}_assignments`,
-          `${course.coursecode}_materials`
+          `${course.coursecode}_materials`,
         ];
-        
-        allRooms.forEach(room => {
-          newSocket.emit('leave_room', {
+
+        allRooms.forEach((room) => {
+          socketInstance.emit("leave_room", {
             room,
             userEmail: global1.userEmail,
-            userName: global1.userName
+            userName: global1.userName,
           });
         });
-        newSocket.close();
+
+        socketInstance.off("connect", handleConnect);
+        socketInstance.off("disconnect", handleDisconnect);
+        socketInstance.off("connect_error", handleConnectError);
       }
     };
-  }, [course._id]); // Only re-run when course changes
+  }, [course._id]);
+  // Only re-run when course changes
 
   const handleTabChange = (event, newValue) => {
     onRoomChange(newValue);
@@ -111,7 +113,7 @@ const ChatInterface = ({ course, selectedRoom, onRoomChange }) => {
 
   const renderRoomContent = () => {
     const roomId = `${course.coursecode}_${selectedRoom}`;
-    
+
     switch (selectedRoom) {
       case 'syllabus':
         return <SyllabusRoom course={course} socket={socket} roomId={roomId} />;
@@ -125,20 +127,20 @@ const ChatInterface = ({ course, selectedRoom, onRoomChange }) => {
   };
 
   return (
-    <Box sx={{ 
-      height: '100%', 
+    <Box sx={{
+      height: '100%',
       width: '100%',
-      display: 'flex', 
+      display: 'flex',
       flexDirection: 'column',
       overflow: 'hidden'
     }}>
       {/* Course Header - Only on desktop */}
       {!isMobile && (
-        <Paper 
-          elevation={1} 
-          sx={{ 
-            p: 3, 
-            backgroundColor: '#075e54', 
+        <Paper
+          elevation={1}
+          sx={{
+            p: 3,
+            backgroundColor: '#075e54',
             color: 'white',
             borderRadius: 0,
             flexShrink: 0
@@ -153,25 +155,25 @@ const ChatInterface = ({ course, selectedRoom, onRoomChange }) => {
                 {course.coursecode} • {course.year}
               </Typography>
             </Box>
-            <Typography variant="caption" 
-              sx={{ 
+            <Typography variant="caption"
+              sx={{
                 color: connectionStatus === 'connected' ? '#4caf50' : '#f44336',
                 fontWeight: 600,
                 fontSize: '0.75rem'
               }}
             >
-              {connectionStatus === 'connected' ? '🟢 Connected' : 
-               connectionStatus === 'error' ? '🔴 Error' : '🟡 Connecting...'}
+              {connectionStatus === 'connected' ? '🟢 Connected' :
+                connectionStatus === 'error' ? '🔴 Error' : '🟡 Connecting...'}
             </Typography>
           </Box>
         </Paper>
       )}
 
       {/* Room Tabs */}
-      <Paper 
-        elevation={1} 
-        sx={{ 
-          borderRadius: 0, 
+      <Paper
+        elevation={1}
+        sx={{
+          borderRadius: 0,
           borderBottom: '1px solid #e0e0e0',
           flexShrink: 0
         }}
@@ -182,7 +184,7 @@ const ChatInterface = ({ course, selectedRoom, onRoomChange }) => {
           variant={isMobile ? "fullWidth" : "standard"}
           indicatorColor="primary"
           textColor="primary"
-          sx={{ 
+          sx={{
             minHeight: { xs: 40, sm: 48 },
             '& .MuiTab-root': {
               minHeight: { xs: 40, sm: 48 },
@@ -209,7 +211,7 @@ const ChatInterface = ({ course, selectedRoom, onRoomChange }) => {
       </Paper>
 
       {/* Room Content */}
-      <Box sx={{ 
+      <Box sx={{
         flexGrow: 1,
         overflow: 'hidden',
         backgroundColor: '#f8fafc',

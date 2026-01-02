@@ -48,7 +48,7 @@ import ep3 from "../api/ep3";
 import global1 from "../pages/global1";
 import AIChatInterface from "./AIChatInterface";
 import CreateClassInterface from "./CreateClassInterface";
-import io from "socket.io-client";
+import socketInstance from "../api/ep2";
 
 const ManageClassesInterfaceByCourse = ({ course }) => {
   const [classes, setClasses] = useState([]);
@@ -92,17 +92,22 @@ const ManageClassesInterfaceByCourse = ({ course }) => {
 
   useEffect(() => {
     if (!isFaculty) return;
-    const newSocket = io("https://epaathsala.azurewebsites.net", {
-      transports: ["websocket"],
-      reconnection: true,
-    });
-    setSocket(newSocket);
-    newSocket.on("ai_analysis_status_update", () => {
+    if (!socketInstance.connected) {
+      socketInstance.connect();
+    }
+    setSocket(socketInstance);
+
+    const handleStatusUpdate = () => {
       fetchAIAnalyses();
       fetchClasses();
-    });
+    };
+
+    socketInstance.on("ai_analysis_status_update", handleStatusUpdate);
+
     return () => {
-      if (newSocket) newSocket.disconnect();
+      if (socketInstance) {
+        socketInstance.off("ai_analysis_status_update", handleStatusUpdate);
+      }
     };
   }, [isFaculty]);
 
@@ -378,9 +383,8 @@ const ManageClassesInterfaceByCourse = ({ course }) => {
     setManualMessages([
       {
         role: "bot",
-        text: `Hi ${global1.userName}! Let's create a class for ${
-          course.course || course.coursename
-        } (${course.coursecode}).`,
+        text: `Hi ${global1.userName}! Let's create a class for ${course.course || course.coursename
+          } (${course.coursecode}).`,
       },
       { role: "bot", text: "First, what is the topic of the class?" },
     ]);
@@ -478,17 +482,12 @@ const ManageClassesInterfaceByCourse = ({ course }) => {
         ...prev,
         {
           role: "bot",
-          text: `${
-            moduleVal ? `Module: ${moduleVal}` : "Module: Not specified"
-          }\n\n**Review:**\nCourse: ${course.course || course.coursename} (${
-            course.coursecode
-          })\nTopic: ${manualForm.topic}\nDate: ${
-            manualForm.classdate
-          }\nTime: ${manualForm.classtime || "Not specified"}\nModule: ${
-            moduleVal || "Not specified"
-          }\nProgram: ${course.program || "N/A"}\nSemester: ${
-            course.semester
-          }\nSection: ${course.section}\n\nClick "Create Class" to confirm!`,
+          text: `${moduleVal ? `Module: ${moduleVal}` : "Module: Not specified"
+            }\n\n**Review:**\nCourse: ${course.course || course.coursename} (${course.coursecode
+            })\nTopic: ${manualForm.topic}\nDate: ${manualForm.classdate
+            }\nTime: ${manualForm.classtime || "Not specified"}\nModule: ${moduleVal || "Not specified"
+            }\nProgram: ${course.program || "N/A"}\nSemester: ${course.semester
+            }\nSection: ${course.section}\n\nClick "Create Class" to confirm!`,
         },
       ]);
       setManualStep("confirm");
@@ -545,9 +544,8 @@ const ManageClassesInterfaceByCourse = ({ course }) => {
         ...prev,
         {
           role: "bot",
-          text: `Failed to create class: ${
-            error.response?.data?.message || error.message
-          }\n\nPlease try again.`,
+          text: `Failed to create class: ${error.response?.data?.message || error.message
+            }\n\nPlease try again.`,
         },
       ]);
     }
@@ -805,10 +803,9 @@ const ManageClassesInterfaceByCourse = ({ course }) => {
                   {courseGroup.courseInfo.section} •{" "}
                   {courseGroup.classes.length} classes
                   {isFaculty &&
-                    ` • ${
-                      courseGroup.classes.filter(
-                        (cls) => getClassStatus(cls.classdate).canMarkAttendance
-                      ).length
+                    ` • ${courseGroup.classes.filter(
+                      (cls) => getClassStatus(cls.classdate).canMarkAttendance
+                    ).length
                     } attendance available`}
                 </Typography>
               </Box>
@@ -1332,10 +1329,10 @@ const ManageClassesInterfaceByCourse = ({ course }) => {
                   manualStep === "topic"
                     ? "Enter class topic..."
                     : manualStep === "date"
-                    ? "Enter date (YYYY-MM-DD)..."
-                    : manualStep === "time"
-                    ? "Enter time (HH:MM) or type skip..."
-                    : "Enter module or type skip..."
+                      ? "Enter date (YYYY-MM-DD)..."
+                      : manualStep === "time"
+                        ? "Enter time (HH:MM) or type skip..."
+                        : "Enter module or type skip..."
                 }
                 value={manualInput}
                 onChange={(e) => setManualInput(e.target.value)}

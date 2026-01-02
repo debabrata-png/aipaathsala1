@@ -11,7 +11,7 @@ import {
   Avatar,
 } from "@mui/material";
 import { Menu, ArrowBack } from "@mui/icons-material";
-import { io } from "socket.io-client";
+import socket from "../api/ep2";
 import Sidebar from "../components/Sidebar";
 import ChatInterface from "../components/ChatInterface";
 import PatentsInterface from "../components/PatentsInterface";
@@ -57,26 +57,24 @@ const Dashboard = () => {
   const [activeCourseTab, setActiveCourseTab] = useState("syllabus");
   const [showCourseMessages, setShowCourseMessages] = useState(false);
   const [currentRoomId, setCurrentRoomId] = useState("");
-  const [socket, setSocket] = useState(null);
+  const [localSocket, setLocalSocket] = useState(null); // Renamed to avoid conflict with imported 'socket'
 
   const handleDrawerToggle = () => setMobileOpen(!mobileOpen);
 
   useEffect(() => {
     // Initialize socket connection
-    //const socketInstance = io("http://localhost:8000", {
-    const socketInstance = io("https://epaathsala.azurewebsites.net", {
-      query: {
-        userId: global1.userEmail,
-        userName: global1.userName,
-        colid: global1.colid,
-      },
-    });
-    setSocket(socketInstance);
+    // Ensure socket is connected
+    if (!socket.connected) {
+      socket.connect();
+    }
+    setLocalSocket(socket); // Set the local state to the imported socket instance
 
-    // Cleanup on unmount
-    return () => {
-      socketInstance.disconnect();
-    };
+    // Cleanup on unmount - we don't necessarily want to disconnect the global socket 
+    // but the original code did. Given it's a dashboard, it might be fine to keep it connected.
+    // However, for consistency with original behavior if needed:
+    // return () => {
+    //   socket.disconnect();
+    // };
   }, []);
 
   const handleOpenChat = (collaboration) => {
@@ -137,8 +135,8 @@ const Dashboard = () => {
         selectedCourse.courseType === "advance"
           ? " (ADVANCE)"
           : selectedCourse.courseType === "remedial"
-          ? " (REMEDIAL)"
-          : "";
+            ? " (REMEDIAL)"
+            : "";
       return courseName + typeLabel;
     } else if (selectedSection === "profile") {
       return "My Profile";
@@ -241,8 +239,8 @@ const Dashboard = () => {
         selectedCourse.courseType === "advance"
           ? "adv_"
           : selectedCourse.courseType === "remedial"
-          ? "rem_"
-          : "";
+            ? "rem_"
+            : "";
       const base = `${typePrefix}course_${selectedCourse.coursecode}`;
 
       if (activeCourseTab === "syllabus") return `${base}_syllabus`;
